@@ -1,5 +1,5 @@
 use alloy::providers::{Provider, ProviderBuilder, RootProvider};
-use alloy::rpc::types::{BlockNumberOrTag, BlockTransactionsKind};
+use alloy::rpc::types::{Block, BlockNumberOrTag, BlockTransactionsKind};
 use alloy::transports::http::{Client, Http};
 use dotenv::dotenv;
 use eyre::Result;
@@ -24,11 +24,13 @@ static PROVIDER: Lazy<Arc<RootProvider<Http<Client>>>> = Lazy::new(|| {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
 
-    let cold_start_blocks = cold_start().await.unwrap_or([].to_vec());
-    let blocks = Arc::new(Mutex::new(cold_start_blocks.clone()));
-    let mut interval = time::interval(Duration::from_secs(5));
+    let blocks = Arc::new(Mutex::new([].to_vec()));
+    let shared_blocks = Arc::clone(&blocks);
+
+    tokio::spawn(cold_start(shared_blocks));
 
     // Main block watcher
+    let mut interval = time::interval(Duration::from_secs(5));
     loop {
         // Lock the shared state
         let mut blocks = blocks.lock().await;
@@ -41,7 +43,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             0
         };
-        println!("Last block number: {}", last_block_number);
 
         let new_block = fetch_new_block(last_block_number).await;
         match new_block {
@@ -49,7 +50,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("New block: {}", block.header.number);
                 println!("Block hash: {}", block.header.hash);
                 blocks.push(block);
-                println!("Blocks count: {:?}", blocks.len());
+                println!(
+                    "Block numbers: {:?}",
+                    blocks.iter().map(|b| b.header.number).collect::<Vec<u64>>()
+                );
             }
             None => {}
         }
@@ -57,21 +61,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-async fn cold_start() -> Result<Vec<alloy::rpc::types::Block>> {
-    let last_finalized_block = get_block_by_number_or_tag(BlockNumberOrTag::Finalized).await?;
-
-    let latest_block = get_block_by_number_or_tag(BlockNumberOrTag::Latest).await?;
+async fn cold_start(
+    blocks: Arc<Mutex<Vec<Block>>>,
+) -> Result<(), Box<dyn std::error::Error + Send>> {
+    let last_finalized_block = get_block_by_number_or_tag(BlockNumberOrTag::Finalized)
+        .await
+        .expect("Can't fetch last finalized block");
+    let latest_block = get_block_by_number_or_tag(BlockNumberOrTag::Latest)
+        .await
+        .expect("Can't fetch latest block");
 
     let start_block_number = last_finalized_block.header.number - 11;
     let end_block_number = latest_block.header.number - 1;
 
-    let mut blocks = vec![];
+    let mut new_blocks = vec![];
 
     for block_number in start_block_number..=end_block_number {
-        let block = get_block_by_number_or_tag(BlockNumberOrTag::Number(block_number)).await?;
-        blocks.push(block);
+        let block = get_block_by_number_or_tag(BlockNumberOrTag::Number(block_number))
+            .await
+            .expect("Can't fetch block");
+        new_blocks.push(block);
     }
-    return Ok(blocks);
+    blocks.lock().await.splice(0..0, new_blocks.iter().cloned());
+    return Ok(());
 }
 
 async fn fetch_new_block(last_block_number: u64) -> Option<alloy::rpc::types::Block> {
@@ -95,6 +107,7 @@ async fn fetch_new_block(last_block_number: u64) -> Option<alloy::rpc::types::Bl
 
 async fn get_block_by_number_or_tag(tag: BlockNumberOrTag) -> Result<alloy::rpc::types::Block> {
     let provider = &*PROVIDER;
+
     let block = provider
         .get_block_by_number(tag, BlockTransactionsKind::Hashes)
         .await
