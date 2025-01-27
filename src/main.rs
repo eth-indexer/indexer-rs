@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let provider = ProviderBuilder::new().on_http(rpc_url);
     let cold_start_blocks = cold_start(provider.clone()).await.unwrap_or([].to_vec());
     let blocks = Arc::new(Mutex::new(cold_start_blocks.clone()));
-    let mut interval = time::interval(Duration::from_secs(12));
+    let mut interval = time::interval(Duration::from_secs(10));
 
     // Main block watcher
     loop {
@@ -29,11 +29,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Lock the shared state
         let mut blocks = blocks.lock().await;
-        let last_block_number = blocks
-            .get(blocks.len() - 1)
-            .expect("Failed to get last block")
-            .header
-            .number;
+        let last_block_number = if blocks.len() > 0 {
+            blocks
+                .get(blocks.len() - 1)
+                .expect("Failed to get last block")
+                .header
+                .number
+        } else {
+            0
+        };
+        println!("Last block number: {}", last_block_number);
 
         let new_block = fetch_new_block(provider.clone(), last_block_number).await;
         match new_block {
