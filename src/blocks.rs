@@ -88,3 +88,25 @@ pub async fn trim_extra_finalized_blocks(
 
     return Ok(());
 }
+
+pub async fn check_reorg(blocks: Arc<Mutex<Vec<Block>>>) -> bool {
+    let blocks_guard = blocks.lock().await;
+
+    let last_block = match blocks_guard.last() {
+        Some(block) => block,
+        None => return false,
+    };
+
+    let parent_block = blocks_guard
+        .iter()
+        .rev()
+        .skip(1)
+        .find(|block| block.header.number == last_block.header.number - 1);
+
+    let parent_block = match parent_block {
+        Some(block) => block,
+        None => return false,
+    };
+
+    last_block.header.parent_hash != parent_block.header.hash
+}

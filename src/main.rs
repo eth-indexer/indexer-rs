@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 use tokio::time::{self, Duration};
 
 mod blocks;
-use blocks::{cold_start, fetch_new_block, trim_extra_finalized_blocks};
+use blocks::{check_reorg, cold_start, fetch_new_block, trim_extra_finalized_blocks};
 
 // TODO: Replace expects in requests with something no causing panic
 
@@ -53,6 +53,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .collect::<Vec<u64>>(),
                     blocks_guard.len()
                 );
+            }
+
+            let shared_blocks = Arc::clone(&blocks);
+            if check_reorg(shared_blocks).await {
+                println!("Reorg detected");
+            } else {
+                println!("No reorg detected");
             }
 
             // Run trimming extra finalized blocks task
