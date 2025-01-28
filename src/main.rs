@@ -2,6 +2,8 @@ use eyre::Result;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{self, Duration};
+use tracing::info;
+use tracing_subscriber;
 
 mod blocks;
 use blocks::{check_reorg, cold_start, fetch_new_block, trim_extra_finalized_blocks};
@@ -10,6 +12,7 @@ use blocks::{check_reorg, cold_start, fetch_new_block, trim_extra_finalized_bloc
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt::init();
     let blocks = Arc::new(Mutex::new(vec![]));
 
     // Run cold start task
@@ -37,15 +40,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let new_block = fetch_new_block(last_block_number).await;
         if let Some(block) = new_block {
-            println!("New block: {}", block.header.number);
-            println!("Block hash: {}", block.header.hash);
+            info!("New block: {}", block.header.number);
+            info!("Block hash: {}", block.header.hash);
 
             // Acquire the lock
             {
                 let mut blocks_guard = blocks.lock().await;
                 blocks_guard.push(block.clone()); // Push the new block into the vector
 
-                println!(
+                info!(
                     "Block numbers: {:?} {}",
                     blocks_guard
                         .iter()
@@ -57,9 +60,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let shared_blocks = Arc::clone(&blocks);
             if check_reorg(shared_blocks).await {
-                println!("Reorg detected");
+                info!("Reorg detected");
             } else {
-                println!("No reorg detected");
+                info!("No reorg detected");
             }
 
             // Run trimming extra finalized blocks task
