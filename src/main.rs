@@ -2,11 +2,13 @@ use eyre::Result;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{self, Duration};
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber;
 
 mod blocks;
-use blocks::{check_reorg, cold_start, fetch_new_block, trim_extra_finalized_blocks};
+use blocks::{
+    check_reorg, cold_start, fetch_new_block, reorganize_blocks, trim_extra_finalized_blocks,
+};
 
 // TODO: Replace expects in requests with something no causing panic
 
@@ -61,6 +63,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let shared_blocks = Arc::clone(&blocks);
             if check_reorg(shared_blocks).await {
                 info!("Reorg detected");
+                let shared_blocks = Arc::clone(&blocks);
+                tokio::spawn(async move {
+                    if let Err(e) = reorganize_blocks(shared_blocks).await {
+                        error!("Error during reorganization: {:?}", e);
+                    }
+                });
             } else {
                 info!("No reorg detected");
             }

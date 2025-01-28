@@ -8,6 +8,7 @@ use once_cell::sync::Lazy;
 use std::env;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::info;
 
 // TODO: Replace expects in requests with something no causing panic
 
@@ -85,8 +86,10 @@ pub async fn trim_extra_finalized_blocks(
         .await
         .expect("Can't fetch finalized block");
 
-    let mut blocks = blocks.lock().await;
-    blocks.retain(|block| block.header.number >= finalized_block.header.number - 11);
+    blocks
+        .lock()
+        .await
+        .retain(|block| block.header.number >= finalized_block.header.number - 11);
 
     return Ok(());
 }
@@ -113,7 +116,31 @@ pub async fn check_reorg(blocks: Arc<Mutex<Vec<Block>>>) -> bool {
     last_block.header.parent_hash != parent_block.header.hash
 }
 
-// pub async fn reorganize_blocks(
-//     blocks: Arc<Mutex<Vec<Block>>>,
-// ) -> Result<(), Box<dyn std::error::Error + Send>> {
-// }
+pub async fn reorganize_blocks(
+    blocks: Arc<Mutex<Vec<Block>>>,
+) -> Result<(), Box<dyn std::error::Error + Send>> {
+    // Lock the blocks vector
+    let mut blocks_guard = blocks.lock().await;
+
+    for block in blocks_guard.iter_mut().rev() {
+        let expected_block =
+            get_block_by_number_or_tag(BlockNumberOrTag::Number(block.header.number))
+                .await
+                .expect("Failed to fetch block");
+
+        if block.header.hash != expected_block.header.hash {
+            info!(
+                "Reorg detected at block number {}. Refetching...",
+                block.header.number
+            );
+            info!("Old block hash: {}", block.header.hash);
+
+            // Replace the block with the updated block
+            *block = expected_block;
+            info!("Updated! New block hash: {}", block.header.hash);
+        }
+    }
+
+    info!("Reorganization complete.");
+    Ok(())
+}
