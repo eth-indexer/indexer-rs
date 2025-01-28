@@ -1816,6 +1816,7 @@ dependencies = [
  "dotenv",
  "dotenvy",
  "eyre",
+ "futures",
  "futures-util",
  "nanoid",
  "once_cell",

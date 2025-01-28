@@ -3,6 +3,7 @@ use alloy::rpc::types::{Block, BlockNumberOrTag, BlockTransactionsKind};
 use alloy::transports::http::{Client, Http};
 use dotenv::dotenv;
 use eyre::Result;
+use futures::future::join_all;
 use once_cell::sync::Lazy;
 use std::env;
 use std::sync::Arc;
@@ -33,15 +34,16 @@ pub async fn cold_start(
     let start_block_number = last_finalized_block.header.number - 11;
     let end_block_number = latest_block.header.number - 1;
 
-    let mut new_blocks = vec![];
+    let fetch_blocks_futures = (start_block_number..=end_block_number)
+        .map(|block_number| get_block_by_number_or_tag(BlockNumberOrTag::Number(block_number)));
 
-    for block_number in start_block_number..=end_block_number {
-        let block = get_block_by_number_or_tag(BlockNumberOrTag::Number(block_number))
-            .await
-            .expect("Can't fetch block");
-        new_blocks.push(block);
-    }
-    blocks.lock().await.splice(0..0, new_blocks.iter().cloned());
+    let fetched_blocks: Vec<Block> = join_all(fetch_blocks_futures)
+        .await
+        .into_iter()
+        .filter_map(Result::ok)
+        .collect();
+
+    blocks.lock().await.splice(0..0, fetched_blocks);
     return Ok(());
 }
 
@@ -110,3 +112,8 @@ pub async fn check_reorg(blocks: Arc<Mutex<Vec<Block>>>) -> bool {
 
     last_block.header.parent_hash != parent_block.header.hash
 }
+
+// pub async fn reorganize_blocks(
+//     blocks: Arc<Mutex<Vec<Block>>>,
+// ) -> Result<(), Box<dyn std::error::Error + Send>> {
+// }
