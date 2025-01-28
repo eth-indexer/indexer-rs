@@ -8,6 +8,8 @@ use std::env;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+// TODO: Replace expects in requests with something no causing panic
+
 static PROVIDER: Lazy<Arc<RootProvider<Http<Client>>>> = Lazy::new(|| {
     dotenv().ok();
     let rpc_url = env::var("NODE_URL")
@@ -72,4 +74,17 @@ pub async fn get_block_by_number_or_tag(tag: BlockNumberOrTag) -> Result<alloy::
         .expect("Block not found");
 
     return Ok(block);
+}
+
+pub async fn trim_extra_finalized_blocks(
+    blocks: Arc<Mutex<Vec<Block>>>,
+) -> Result<(), Box<dyn std::error::Error + Send>> {
+    let finalized_block = get_block_by_number_or_tag(BlockNumberOrTag::Finalized)
+        .await
+        .expect("Can't fetch finalized block");
+
+    let mut blocks = blocks.lock().await;
+    blocks.retain(|block| block.header.number >= finalized_block.header.number - 11);
+
+    return Ok(());
 }
