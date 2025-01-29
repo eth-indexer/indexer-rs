@@ -5,10 +5,14 @@ use tokio::time::{self, Duration};
 use tracing::{error, info};
 use tracing_subscriber;
 
-mod blocks;
+pub mod blocks;
+pub mod no_registry_contract;
 use blocks::{
     check_reorg, cold_start, fetch_new_block, reorganize_blocks, trim_extra_finalized_blocks,
 };
+
+mod signing_keys;
+// use signing_keys::get_signing_keys;
 
 // TODO: Replace expects in requests with something no causing panic
 

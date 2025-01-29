@@ -8,11 +8,11 @@ use once_cell::sync::Lazy;
 use std::env;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::info;
+use tracing::{error, info};
 
 // TODO: Replace expects in requests with something no causing panic
 
-static PROVIDER: Lazy<Arc<RootProvider<Http<Client>>>> = Lazy::new(|| {
+pub static PROVIDER: Lazy<Arc<RootProvider<Http<Client>>>> = Lazy::new(|| {
     dotenv().ok();
     let rpc_url = env::var("NODE_URL")
         .expect("Cannot find NODE_URL")
@@ -50,10 +50,15 @@ pub async fn cold_start(
 
 pub async fn fetch_new_block(last_block_number: u64) -> Option<alloy::rpc::types::Block> {
     let provider = &*PROVIDER;
-    let latest_block_number = provider
-        .get_block_number()
-        .await
-        .expect("Failed to fetch block number");
+    let latest_block_number = provider.get_block_number().await;
+
+    let latest_block_number = match latest_block_number {
+        Ok(block_number) => block_number,
+        Err(e) => {
+            error!("Failed to fetch latest block number: {:?}", e);
+            return None;
+        }
+    };
 
     if latest_block_number > last_block_number {
         let block = get_block_by_number_or_tag(BlockNumberOrTag::Latest).await;
@@ -72,9 +77,15 @@ pub async fn get_block_by_number_or_tag(tag: BlockNumberOrTag) -> Result<alloy::
 
     let block = provider
         .get_block_by_number(tag, BlockTransactionsKind::Hashes)
-        .await
-        .expect("Failed to fetch block")
-        .expect("Block not found");
+        .await;
+
+    let block = match block {
+        Ok(block) => block.unwrap(),
+        Err(e) => {
+            error!("Failed to fetch finalized block: {:?}", e);
+            return Err(e.into());
+        }
+    };
 
     return Ok(block);
 }
@@ -119,7 +130,6 @@ pub async fn check_reorg(blocks: Arc<Mutex<Vec<Block>>>) -> bool {
 pub async fn reorganize_blocks(
     blocks: Arc<Mutex<Vec<Block>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send>> {
-    // Lock the blocks vector
     let mut blocks_guard = blocks.lock().await;
 
     for block in blocks_guard.iter_mut().rev() {
@@ -135,7 +145,6 @@ pub async fn reorganize_blocks(
             );
             info!("Old block hash: {}", block.header.hash);
 
-            // Replace the block with the updated block
             *block = expected_block;
             info!("Updated! New block hash: {}", block.header.hash);
         }

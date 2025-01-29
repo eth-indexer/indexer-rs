@@ -1821,6 +1821,7 @@ dependencies = [
  "nanoid",
  "once_cell",
  "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
