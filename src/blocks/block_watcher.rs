@@ -25,8 +25,6 @@ impl BlockWatcher {
     }
 
     pub async fn watch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.blocks = Arc::new(Mutex::new(vec![]));
-
         // Run cold start task
         let shared_blocks = Arc::clone(&self.blocks);
         tokio::spawn(cold_start(shared_blocks, self.event_publisher.clone()));
