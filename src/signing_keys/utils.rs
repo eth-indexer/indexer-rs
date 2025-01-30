@@ -3,7 +3,7 @@ use alloy::eips::BlockId;
 use alloy::primitives::U256;
 use tracing::{error, info};
 
-use crate::no_registry_contract::NO_REGISTRY_CONTRACT;
+use crate::contracts::no_registry_contract::NO_REGISTRY_CONTRACT;
 
 const MAX_BATCH_SIZE: u64 = 500;
 

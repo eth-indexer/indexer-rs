@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{error, info};
 
-use crate::blocks_observer::{Event, Publisher};
+use crate::blocks::blocks_observer::{Event, Publisher};
 
 // TODO: Replace expects in requests with something no causing panic
 
@@ -52,7 +52,7 @@ pub async fn cold_start(
     event_publisher
         .lock()
         .await
-        .blocks_changed(Event::BlocksChanged, blocks_guard.clone());
+        .blocks_changed(blocks_guard.clone());
     return Ok(());
 }
 

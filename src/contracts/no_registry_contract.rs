@@ -5,7 +5,7 @@ use alloy::transports::http::{Client, Http};
 use once_cell::sync::Lazy;
 use std::sync::Arc;
 
-use crate::blocks::PROVIDER;
+use crate::blocks::utils::PROVIDER;
 
 pub static NO_REGISTRY_CONTRACT: Lazy<
     Arc<ContractInstance<Http<Client>, Arc<RootProvider<Http<Client>>>>>,

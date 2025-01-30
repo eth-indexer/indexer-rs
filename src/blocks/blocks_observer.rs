@@ -1,5 +1,6 @@
 use alloy::rpc::types::Block;
-use std::collections::HashMap;
+use once_cell::sync::Lazy;
+use std::{collections::HashMap, sync::Arc};
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub enum Event {
@@ -28,14 +29,22 @@ impl Publisher {
     }
 
     pub fn reorg(&self) {
-        let listeners = self.events.get(&Event::Reorg).unwrap();
+        let listeners = self.events.get(&Event::Reorg);
+        let listeners = match listeners {
+            Some(listeners) => listeners,
+            None => return,
+        };
         for listener in listeners {
             listener(None);
         }
     }
 
-    pub fn blocks_changed(&self, event_type: Event, blocks: Vec<Block>) {
-        let listeners = self.events.get(&event_type).unwrap();
+    pub fn blocks_changed(&self, blocks: Vec<Block>) {
+        let listeners = self.events.get(&Event::BlocksChanged);
+        let listeners = match listeners {
+            Some(listeners) => listeners,
+            None => return,
+        };
         for listener in listeners {
             listener(Some(blocks.clone()));
         }
