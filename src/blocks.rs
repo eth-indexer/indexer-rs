@@ -10,6 +10,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{error, info};
 
+use crate::blocks_observer::{Event, Publisher};
+
 // TODO: Replace expects in requests with something no causing panic
 
 pub static PROVIDER: Lazy<Arc<RootProvider<Http<Client>>>> = Lazy::new(|| {
@@ -24,6 +26,7 @@ pub static PROVIDER: Lazy<Arc<RootProvider<Http<Client>>>> = Lazy::new(|| {
 
 pub async fn cold_start(
     blocks: Arc<Mutex<Vec<Block>>>,
+    event_publisher: Arc<Mutex<Publisher>>,
 ) -> Result<(), Box<dyn std::error::Error + Send>> {
     let last_finalized_block = get_block_by_number_or_tag(BlockNumberOrTag::Finalized)
         .await
@@ -44,7 +47,12 @@ pub async fn cold_start(
         .filter_map(Result::ok)
         .collect();
 
-    blocks.lock().await.splice(0..0, fetched_blocks);
+    let mut blocks_guard = blocks.lock().await;
+    blocks_guard.splice(0..0, fetched_blocks);
+    event_publisher
+        .lock()
+        .await
+        .blocks_changed(Event::BlocksChanged, blocks_guard.clone());
     return Ok(());
 }
 

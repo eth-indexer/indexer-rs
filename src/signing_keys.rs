@@ -5,6 +5,8 @@ use tracing::{error, info};
 
 use crate::no_registry_contract::NO_REGISTRY_CONTRACT;
 
+const MAX_BATCH_SIZE: u64 = 500;
+
 pub async fn get_signing_keys(block_id: BlockId) {
     // TODO: fetch operator ids and then fetch signing keys for each operator
     // let operator_id = 0;
@@ -27,6 +29,8 @@ async fn get_operator_keys(operator_id: u64, block_id: BlockId) {
         "Total signing keys count for operator {}: {}",
         operator_id, total_signing_keys_count
     );
+
+    // let batches_count = (total_signing_keys_count / MAX_BATCH_SIZE).ceil();
 
     // TODO: Fetch signing keys
 }

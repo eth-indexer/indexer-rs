@@ -11,6 +11,8 @@ use blocks::{
     check_reorg, cold_start, fetch_new_block, reorganize_blocks, trim_extra_finalized_blocks,
 };
 
+mod blocks_observer;
+use blocks_observer::{Event, Publisher};
 mod signing_keys;
 // use signing_keys::get_signing_keys;
 
@@ -20,10 +22,31 @@ mod signing_keys;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     let blocks = Arc::new(Mutex::new(vec![]));
+    let event_publisher = Arc::new(Mutex::new(Publisher::default()));
+
+    event_publisher
+        .lock()
+        .await
+        .subscribe(Event::BlocksChanged, |new_blocks| {
+            if let Some(new_blocks) = new_blocks {
+                info!(
+                    "Block numbers: {:?} {}",
+                    new_blocks
+                        .iter()
+                        .map(|b| b.header.number)
+                        .collect::<Vec<u64>>(),
+                    new_blocks.len()
+                );
+            }
+        });
+
+    event_publisher.lock().await.subscribe(Event::Reorg, |_| {
+        info!("Rorg detected");
+    });
 
     // Run cold start task
     let shared_blocks = Arc::clone(&blocks);
-    tokio::spawn(cold_start(shared_blocks));
+    tokio::spawn(cold_start(shared_blocks, event_publisher.clone()));
 
     // Main block watcher
     let mut interval = time::interval(Duration::from_secs(5));
@@ -52,21 +75,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Acquire the lock
             {
                 let mut blocks_guard = blocks.lock().await;
-                blocks_guard.push(block.clone()); // Push the new block into the vector
-
-                info!(
-                    "Block numbers: {:?} {}",
-                    blocks_guard
-                        .iter()
-                        .map(|b| b.header.number)
-                        .collect::<Vec<u64>>(),
-                    blocks_guard.len()
-                );
+                blocks_guard.push(block.clone());
+                event_publisher
+                    .lock()
+                    .await
+                    .blocks_changed(Event::BlocksChanged, blocks_guard.clone());
             }
 
             let shared_blocks = Arc::clone(&blocks);
             if check_reorg(shared_blocks).await {
-                info!("Reorg detected");
+                event_publisher.lock().await.reorg();
+
                 let shared_blocks = Arc::clone(&blocks);
                 tokio::spawn(async move {
                     if let Err(e) = reorganize_blocks(shared_blocks).await {
